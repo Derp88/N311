@@ -41,6 +41,7 @@ CREATE SEQUENCE TimeOffID INCREMENT BY 1 START WITH 1;
 CREATE SEQUENCE ScheduleID INCREMENT BY 1 START WITH 1;
 CREATE SEQUENCE IncomeID INCREMENT BY 1 START WITH 1;
 
+--3. CREATE TABLES AND EXAMPLE DATA
 --Create tables
 CREATE TABLE Item (ItemID int NOT NULL PRIMARY KEY, ItemName varchar(255), Location varchar(255), Price number(10,2) , Amount int);
 CREATE TABLE ShippingReceiving(ShippingID int NOT NULL PRIMARY KEY, ItemID, CONSTRAINT fk_ItemID FOREIGN KEY (ItemID) REFERENCES Item(ItemID), ArrivalDate date, Amount int, ShippingCompany varchar(255));
