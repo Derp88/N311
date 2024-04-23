@@ -80,6 +80,9 @@ INSERT INTO OwnerAdmin VALUES (OwnerAdminID.NextVal, 'Gronald', 'Bingus', '31-Oc
 INSERT INTO Expense VALUES (ExpenseID.NextVal, 'Water Bill', 232.45, '11-Feb-2024', '1');
 INSERT INTO Expense VALUES (ExpenseID.NextVal, 'Power Bill', 904.85, '12-Feb-2024', '1');
 INSERT INTO Expense VALUES (ExpenseID.NextVal, 'Payroll', 1292.40, '15-Feb-2024', '1');
+INSERT INTO Expense VALUES (ExpenseID.NextVal, 'Water Bill', 432.45, '11-Mar-2024', '1');
+INSERT INTO Expense VALUES (ExpenseID.NextVal, 'Power Bill', 704.85, '12-Mar-2024', '1');
+INSERT INTO Expense VALUES (ExpenseID.NextVal, 'Payroll', 1592.40, '15-Mar-2024', '1');
 
 INSERT INTO Manager VALUES (ManagerID.NextVal, 'Joe', 'Biden', '30-Nov-1942', '8745212514', 63000.43, 1);
 INSERT INTO Manager VALUES (ManagerID.NextVal, 'Donald', 'Trump', '14-Jun-1946', '8749872512', 83000.43, 1);
@@ -106,13 +109,15 @@ INSERT INTO WeeklyIncome VALUES (IncomeID.NextVal, 50000.00, '19-Feb-2024', 1);
 -----------END-OF-CREATION-SCRIPT-START-ACTUAL------
 ----------------------------------------------------
 
--- Requirements: 2 (if/else), 6 (defined function)
+-- Requirements: 2 (if/else), 6 (defined function), 4 (user exception handler)
 -- Purpose: Calculate discount for item based on item price.
 -- Significance: The store might want an easy way to calculate discount prices for all items consistently
 CREATE OR REPLACE FUNCTION CALC_DISCOUNT(price number)
-RETURN number is discountPrice number;
+RETURN number is discountPrice number; negative_error EXCEPTION;
 BEGIN
-    IF price > 7 THEN
+    IF price < 0 THEN -- the input price is negative
+        RAISE negative_error;
+    ELSIF price > 7 THEN
         discountPrice := price * 0.80;
     ELSIF price > 5 THEN
         discountPrice := price * 0.90;
@@ -120,16 +125,39 @@ BEGIN
         discountPrice := price * 0.95;
     END IF;
     RETURN discountPrice;
+    EXCEPTION WHEN negative_error THEN -- User exception
+        DBMS_OUTPUT.PUT_LINE('Tried to apply discount on item of negative price!');
+        RETURN 9999;
 END;
 /
 -- Test the function
 SELECT Price FROM ITEM WHERE ItemID = 1;
 SELECT CALC_DISCOUNT(Price) FROM ITEM WHERE ItemID = 1;
+--Test error
+SELECT CALC_DISCOUNT(-9) FROM ITEM WHERE ItemID = 1;
 
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- Requirements: 6 (defined function), 4 (user exception handler)
+-- Purpose: Divide price of item
+-- Significance: The store might want to divide the price of an item to lower it for sales.
+CREATE OR REPLACE FUNCTION DIVIDE_PRICE(price number, divideBy number)
+RETURN number is dividedPrice number;
+BEGIN
+    dividedPrice:= price/ divideBy;
+    RETURN dividedPrice;
+    EXCEPTION WHEN ZERO_DIVIDE THEN
+        DBMS_OUTPUT.PUT_LINE('Cannot divide by zero!');
+        RETURN 88888;
+END;
+/
+-- Test coded
+SELECT DIVIDE_PRICE(Price, 2) FROM ITEM WHERE ItemId = 1;
+SELECT DIVIDE_PRICE(Price, 0) FROM ITEM WHERE ItemId = 1;
+
+--------------------------------------------------------------------------------------------------------------------------------------------
 -- Requirements: 1 (loop, variables), 3 (cursors), 6 (stored procedure)
 -- Purpose: Discount items based off of amount inventory
 -- Significance: The store might want to discount items that it has in large amouunt of stock (that are assumingly not selling well)
-
 CREATE OR REPLACE PROCEDURE DISCOUNT_ITEMS_ON_INVENTORY(minAmountForDiscount IN INT)
 IS
     v_ItemAmount INT;
@@ -154,10 +182,10 @@ END;
 SELECT * FROM ITEM;
 EXECUTE DISCOUNT_ITEMS_ON_INVENTORY(45);
 
+--------------------------------------------------------------------------------------------------------------------------------------------
 -- Requirements: 5 (Trigger),
 -- Purpose: Log when an item's price is updated
 -- Significance: The store's item prices are always changing, it is good to see how each item's price is changing overtime to see how much we are having to discount or raise it.
-
 CREATE OR REPLACE TRIGGER ITEM_LOG_PRICE_UPDATE
 AFTER UPDATE ON ITEM
 FOR EACH ROW
@@ -170,6 +198,7 @@ END;
 EXECUTE DISCOUNT_ITEMS_ON_INVENTORY(45);
 SELECT * FROM ITEMLog;
 
+--------------------------------------------------------------------------------------------------------------------------------------------
 -- Requirements: 5 (Trigger),
 -- Purpose: Log when an item is deleted
 -- Significance: The store may need to know if an item has been deleted from its inventory, so it knows what it no longer carries or offers.
@@ -184,14 +213,60 @@ INSERT INTO Item VALUES (ItemID.NextVal, 'TestItem', 'Aisle 99', 5.25, 100);
 DELETE FROM Item WHERE ItemName = 'TestItem';
 SELECT * FROM ItemDeleteLog;
 
---Tracking
---1 (Done)
---2 (Done)
---3 (Done)
---4 
---5 (Done)
---6 (1/2)
---7 (1/2)
---8
---9
---10
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- Requirements: 8 (Package), 7 (Store procedure), and another function
+-- Purpose: Have a package to manage bills
+-- Significance: The store needs to know the average it spends on bills of a type, and an easy way to input bills
+CREATE OR REPLACE PACKAGE EXPENSE_MANAGMENT AS
+    PROCEDURE INSERT_NEW_BILLS (waterExpense IN NUMBER, powerExpense IN NUMBER, payrollExpense IN NUMBER);
+    FUNCTION AVG_BILL (billType IN VARCHAR) return NUMBER;
+END EXPENSE_MANAGMENT;
+/
+
+CREATE OR REPLACE PACKAGE BODY EXPENSE_MANAGMENT AS
+PROCEDURE INSERT_NEW_BILLS (waterExpense IN NUMBER, powerExpense IN NUMBER, payrollExpense IN NUMBER)
+AS
+BEGIN
+    INSERT INTO Expense VALUES (ExpenseID.NextVal, 'Water Bill', waterExpense, SYSDATE, '1');
+    INSERT INTO Expense VALUES (ExpenseID.NextVal, 'Power Bill', powerExpense, SYSDATE, '1');
+    INSERT INTO Expense VALUES (ExpenseID.NextVal, 'Payroll', payrollExpense, SYSDATE, '1');
+END INSERT_NEW_BILLS;
+
+FUNCTION AVG_BILL (billType IN VARCHAR) return NUMBER is billAvg Number(10,2);
+BEGIN
+    SELECT AVG(Cost) INTO billAvg FROM Expense WHERE Type = billType;
+    RETURN billAvg;
+END AVG_BILL;
+END EXPENSE_MANAGMENT;
+/
+-- Test code
+BEGIN
+    EXPENSE_MANAGMENT.INSERT_NEW_BILLS(100, 200, 1500);
+    COMMIT;
+END;
+/
+SELECT * FROM EXPENSE;
+SELECT EXPENSE_MANAGMENT.AVG_BILL('Payroll') FROM DUAL;
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- Requirements: 9 (Object)
+-- Purpose: Have an object to store item info
+-- Significance: The store needs to know information about an item, so combining it is useful. It also needs to calculate information about said item, which the object can do.
+CREATE OR REPLACE TYPE ITEM_TY AS OBJECT 
+(Name varchar(255), Price number(10,2), Amount int,
+MEMBER FUNCTION VALUE (Price IN number, Amount IN int)  RETURN NUMBER);
+/
+
+CREATE OR REPLACE TYPE BODY ITEM_TY AS
+MEMBER FUNCTION VALUE (Price IN number, Amount IN int) RETURN NUMBER IS
+BEGIN
+    RETURN Price*Amount;
+END;
+END;
+/
+
+-- Example use
+DROP TABLE ITEM_OBJECTS;
+CREATE TABLE ITEM_OBJECTS(Item_ID INT, ItemObj ITEM_TY);
+INSERT INTO ITEM_OBJECTS VALUES (1, ITEM_TY('Soda', 4, 10));
+SELECT I.ItemObj.VALUE(I.ItemObj.Price, I.ItemObj.Amount) FROM ITEM_OBJECTS I;
