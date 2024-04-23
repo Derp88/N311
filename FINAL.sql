@@ -33,7 +33,11 @@ DROP TABLE Item;
 DROP TABLE Customer;
 DROP TABLE WeeklyIncome;
 DROP TABLE OwnerAdmin;
+DROP TABLE ItemLog;
+DROP TABLE ItemDeleteLog;
 CREATE TABLE Item (ItemID int NOT NULL PRIMARY KEY, ItemName varchar(255), Location varchar(255), Price number(10,2) , Amount int);
+CREATE TABLE ItemLog (ItemID int NOT NULL, ItemName varchar(255), OldPrice number(10,2), NewPrice number(10,2));
+CREATE TABLE ItemDeleteLog (ItemID int NOT NULL, ItemName varchar(255), Location varchar(255), Price number(10,2));
 CREATE TABLE ShippingReceiving(ShippingID int NOT NULL PRIMARY KEY, ItemID, CONSTRAINT fk_ItemID FOREIGN KEY (ItemID) REFERENCES Item(ItemID), ArrivalDate date, Amount int, ShippingCompany varchar(255));
 CREATE TABLE Customer(CustomerID int NOT NULL PRIMARY KEY, FirstName varchar(255), LastName varchar(255), DOB date NOT NULL, Email varchar(255) NOT NULL UNIQUE, Phone varchar(10) NOT NULL UNIQUE); --Item 17
 CREATE TABLE Purchase(PurchaseID int NOT NULL PRIMARY KEY, CustomerID, CONSTRAINT fk_CustomerID FOREIGN KEY (CustomerID) REFERENCES Customer(CustomerID), ItemID, CONSTRAINT fk_ItemIDPurchase FOREIGN KEY (ItemID) REFERENCES Item(ItemID), Time date); 
@@ -101,3 +105,93 @@ INSERT INTO WeeklyIncome VALUES (IncomeID.NextVal, 50000.00, '19-Feb-2024', 1);
 ----------------------------------------------------
 -----------END-OF-CREATION-SCRIPT-START-ACTUAL------
 ----------------------------------------------------
+
+-- Requirements: 2 (if/else), 6 (defined function)
+-- Purpose: Calculate discount for item based on item price.
+-- Significance: The store might want an easy way to calculate discount prices for all items consistently
+CREATE OR REPLACE FUNCTION CALC_DISCOUNT(price number)
+RETURN number is discountPrice number;
+BEGIN
+    IF price > 7 THEN
+        discountPrice := price * 0.80;
+    ELSIF price > 5 THEN
+        discountPrice := price * 0.90;
+    ELSE
+        discountPrice := price * 0.95;
+    END IF;
+    RETURN discountPrice;
+END;
+/
+-- Test the function
+SELECT Price FROM ITEM WHERE ItemID = 1;
+SELECT CALC_DISCOUNT(Price) FROM ITEM WHERE ItemID = 1;
+
+-- Requirements: 1 (loop, variables), 3 (cursors), 6 (stored procedure)
+-- Purpose: Discount items based off of amount inventory
+-- Significance: The store might want to discount items that it has in large amouunt of stock (that are assumingly not selling well)
+
+CREATE OR REPLACE PROCEDURE DISCOUNT_ITEMS_ON_INVENTORY(minAmountForDiscount IN INT)
+IS
+    v_ItemAmount INT;
+    v_ItemPrice NUMBER(10,2);
+    v_ItemID INT;
+    CURSOR c_ItemCursor IS SELECT Item.ItemID, Item.Amount, Item.Price FROM Item;
+BEGIN
+    OPEN c_ItemCursor;
+        LOOP
+            FETCH c_ItemCursor INTO v_ItemID, v_ItemAmount, v_ItemPrice;
+                IF v_ItemAmount > minAmountForDiscount THEN
+                    v_ItemPrice := CALC_DISCOUNT(v_ItemPrice);
+                END IF;
+            UPDATE ITEM SET Item.Price = v_ItemPrice WHERE Item.ItemID = v_ItemID;
+        EXIT WHEN c_ItemCursor%NOTFOUND;
+        END LOOP;
+        COMMIT;
+    CLOSE c_ItemCursor;
+END;
+/
+-- Demo code for procedure
+SELECT * FROM ITEM;
+EXECUTE DISCOUNT_ITEMS_ON_INVENTORY(45);
+
+-- Requirements: 5 (Trigger),
+-- Purpose: Log when an item's price is updated
+-- Significance: The store's item prices are always changing, it is good to see how each item's price is changing overtime to see how much we are having to discount or raise it.
+
+CREATE OR REPLACE TRIGGER ITEM_LOG_PRICE_UPDATE
+AFTER UPDATE ON ITEM
+FOR EACH ROW
+BEGIN
+    IF :OLD.Price != :NEW.Price THEN -- The price did change
+        INSERT INTO ItemLog VALUES (:OLD.ItemID, :OLD.ItemName, :OLD.Price, :NEW.Price);
+    END IF;
+END;
+/
+EXECUTE DISCOUNT_ITEMS_ON_INVENTORY(45);
+SELECT * FROM ITEMLog;
+
+-- Requirements: 5 (Trigger),
+-- Purpose: Log when an item is deleted
+-- Significance: The store may need to know if an item has been deleted from its inventory, so it knows what it no longer carries or offers.
+CREATE OR REPLACE TRIGGER ITEM_LOG_DELETE
+AFTER DELETE ON ITEM
+FOR EACH ROW
+BEGIN
+    INSERT INTO ItemDeleteLog VALUES (:OLD.ItemID, :OLD.ItemName, :OLD.Location, :OLD.Price);
+END;
+/
+INSERT INTO Item VALUES (ItemID.NextVal, 'TestItem', 'Aisle 99', 5.25, 100);
+DELETE FROM Item WHERE ItemName = 'TestItem';
+SELECT * FROM ItemDeleteLog;
+
+--Tracking
+--1 (Done)
+--2 (Done)
+--3 (Done)
+--4 
+--5 (Done)
+--6 (1/2)
+--7 (1/2)
+--8
+--9
+--10
