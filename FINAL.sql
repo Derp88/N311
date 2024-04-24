@@ -35,6 +35,7 @@ DROP TABLE WeeklyIncome;
 DROP TABLE OwnerAdmin;
 DROP TABLE ItemLog;
 DROP TABLE ItemDeleteLog;
+DROP TABLE ITEM_OBJECTS;
 CREATE TABLE Item (ItemID int NOT NULL PRIMARY KEY, ItemName varchar(255), Location varchar(255), Price number(10,2) , Amount int);
 CREATE TABLE ItemLog (ItemID int NOT NULL, ItemName varchar(255), OldPrice number(10,2), NewPrice number(10,2));
 CREATE TABLE ItemDeleteLog (ItemID int NOT NULL, ItemName varchar(255), Location varchar(255), Price number(10,2));
@@ -137,7 +138,7 @@ SELECT CALC_DISCOUNT(Price) FROM ITEM WHERE ItemID = 1;
 SELECT CALC_DISCOUNT(-9) FROM ITEM WHERE ItemID = 1;
 
 --------------------------------------------------------------------------------------------------------------------------------------------
--- Requirements: 6 (defined function), 4 (user exception handler)
+-- Requirements: 6 (defined function), 4 (system exception handler)
 -- Purpose: Divide price of item
 -- Significance: The store might want to divide the price of an item to lower it for sales.
 CREATE OR REPLACE FUNCTION DIVIDE_PRICE(price number, divideBy number)
